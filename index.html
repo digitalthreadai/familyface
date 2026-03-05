@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FamilyFace — Kids & Parents Similarity</title>
+  <link rel="stylesheet" href="style.css" />
+  <!-- Native MediaPipe FaceMesh — 478 landmarks, no TensorFlow.js needed -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4.1633559619/face_mesh.js" crossorigin="anonymous"></script>
+</head>
+<body>
+
+  <!-- ── HEADER ── -->
+  <header>
+    <div class="brand">
+      <span class="brand-icon">&#129328;</span>
+      <div>
+        <h1>FamilyFace</h1>
+        <p>Discover which features your child inherited</p>
+      </div>
+    </div>
+  </header>
+
+  <!-- ── MODEL LOADING BANNER ── -->
+  <div id="model-banner" class="model-banner">
+    <div class="spinner"></div>
+    <span id="model-status-text">Loading face detection models&hellip;</span>
+  </div>
+
+  <main>
+    <!-- ── UPLOAD SECTION ── -->
+    <section class="upload-section" id="upload-section">
+      <div class="section-header">
+        <h2>Upload Family Photos</h2>
+        <p>Add a child photo and at least one parent. MediaPipe FaceMesh analyses <strong>478 facial landmarks</strong> entirely in your browser — no data is ever uploaded.</p>
+      </div>
+
+      <div class="upload-grid">
+
+        <!-- Parent 1 -->
+        <div class="upload-card" id="card-parent1" data-slot="parent1">
+          <div class="card-label parent1-label">
+            <span class="dot dot-p1"></span> Parent 1
+          </div>
+          <div class="drop-zone" id="drop-parent1">
+            <div class="drop-icon">&#128100;</div>
+            <p class="drop-text">Drop or click to upload</p>
+            <p class="drop-hint">JPG / PNG / WEBP</p>
+            <input type="file" accept="image/*" id="input-parent1" class="file-input" />
+          </div>
+          <div class="photo-wrap" id="wrap-parent1" style="display:none">
+            <canvas id="canvas-parent1" class="photo-canvas"></canvas>
+            <div class="face-tag" id="tag-parent1"></div>
+            <button class="remove-btn" data-slot="parent1" title="Remove photo">&times;</button>
+          </div>
+        </div>
+
+        <!-- Child (centre, highlighted) -->
+        <div class="upload-card child-card" id="card-child" data-slot="child">
+          <div class="card-label child-label">
+            <span class="dot dot-child"></span> Child
+          </div>
+          <div class="drop-zone" id="drop-child">
+            <div class="drop-icon">&#128118;</div>
+            <p class="drop-text">Drop or click to upload</p>
+            <p class="drop-hint">JPG / PNG / WEBP</p>
+            <input type="file" accept="image/*" id="input-child" class="file-input" />
+          </div>
+          <div class="photo-wrap" id="wrap-child" style="display:none">
+            <canvas id="canvas-child" class="photo-canvas"></canvas>
+            <div class="face-tag" id="tag-child"></div>
+            <button class="remove-btn" data-slot="child" title="Remove photo">&times;</button>
+          </div>
+        </div>
+
+        <!-- Parent 2 -->
+        <div class="upload-card" id="card-parent2" data-slot="parent2">
+          <div class="card-label parent2-label">
+            <span class="dot dot-p2"></span> Parent 2
+            <span class="optional-badge">optional</span>
+          </div>
+          <div class="drop-zone" id="drop-parent2">
+            <div class="drop-icon">&#128100;</div>
+            <p class="drop-text">Drop or click to upload</p>
+            <p class="drop-hint">JPG / PNG / WEBP</p>
+            <input type="file" accept="image/*" id="input-parent2" class="file-input" />
+          </div>
+          <div class="photo-wrap" id="wrap-parent2" style="display:none">
+            <canvas id="canvas-parent2" class="photo-canvas"></canvas>
+            <div class="face-tag" id="tag-parent2"></div>
+            <button class="remove-btn" data-slot="parent2" title="Remove photo">&times;</button>
+          </div>
+        </div>
+
+      </div><!-- /upload-grid -->
+
+      <div class="cta-row">
+        <div class="btn-group">
+          <button class="reset-btn" id="reset-btn" disabled title="Clear all uploaded photos">
+            &#8635; Reset All
+          </button>
+          <button class="analyze-btn" id="analyze-btn" disabled>
+            <span class="btn-icon">&#128269;</span>
+            Analyze Family Resemblance
+          </button>
+        </div>
+        <p class="cta-hint" id="cta-hint">Upload the child&rsquo;s photo to continue</p>
+      </div>
+    </section>
+
+    <!-- ── RESULTS SECTION (populated by JS) ── -->
+    <section class="results-section" id="results-section" style="display:none">
+      <!-- dynamic content injected by app.js -->
+    </section>
+  </main>
+
+  <footer>
+    <p>Powered by <a href="https://github.com/tensorflow/tfjs-models/tree/master/face-landmarks-detection" target="_blank" rel="noopener">TF.js + MediaPipe FaceMesh</a> (478 landmarks) &bull; All processing happens locally in your browser</p>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
