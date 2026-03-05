@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>FamilyFace — Kids & Parents Similarity</title>
   <link rel="stylesheet" href="style.css" />
-  <!-- Native MediaPipe FaceMesh — 478 landmarks, no TensorFlow.js needed -->
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4.1633559619/face_mesh.js" crossorigin="anonymous"></script>
+  <!-- face-api.js — proven CDN, loads in ~5 s, no WASM required -->
+  <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
 </head>
 <body>
 
@@ -115,7 +115,7 @@
   </main>
 
   <footer>
-    <p>Powered by <a href="https://github.com/tensorflow/tfjs-models/tree/master/face-landmarks-detection" target="_blank" rel="noopener">TF.js + MediaPipe FaceMesh</a> (478 landmarks) &bull; All processing happens locally in your browser</p>
+    <p>Powered by <a href="https://github.com/justadudewhohacks/face-api.js" target="_blank" rel="noopener">face-api.js</a> &bull; All processing happens locally in your browser &bull; No data ever leaves your device</p>
   </footer>
 
   <script src="app.js"></script>

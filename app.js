@@ -1,57 +1,67 @@
 /* ══════════════════════════════════════════════════════════════════════
    FamilyFace — app.js
-   Engine: Native MediaPipe FaceMesh (no TensorFlow.js required)
-   478 facial landmark points · runs 100 % in-browser
+   Engine : face-api.js  (68 facial landmarks + 128-dim descriptor)
+   Weights : jsdelivr CDN — no WASM, loads in ~5 s
+   Runs 100 % in-browser. Zero data leaves your device.
    ══════════════════════════════════════════════════════════════════════ */
 
 'use strict';
 
-// CDN base for MediaPipe WASM + model files (same version as the script tag)
-const MP_CDN = 'https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4.1633559619';
-
-// ══════════════════════════════════════════════════════════════════════════════
-// LANDMARK INDEX REGIONS  (MediaPipe 478-point mesh)
-// Coords are NORMALISED [0,1] relative to image width / height
-// ══════════════════════════════════════════════════════════════════════════════
-const REGIONS = {
-  rightEye:    [33, 7, 163, 144, 145, 153, 154, 155, 133, 173, 157, 158, 159, 160, 161, 246],
-  leftEye:     [362, 382, 381, 380, 374, 373, 390, 249, 263, 466, 388, 387, 386, 385, 384, 398],
-  rightIris:   [468, 469, 470, 471, 472],
-  leftIris:    [473, 474, 475, 476, 477],
-  rightEyebrow:[46,  53,  52,  65,  55,  70,  63, 105,  66, 107],
-  leftEyebrow: [276, 283, 282, 295, 285, 300, 293, 334, 296, 336],
-  noseBridge:  [6, 197, 195, 5, 4, 1, 19, 94, 125, 141, 142],
-  noseTip:     [97, 98, 99, 100, 101, 102, 2, 326, 327, 328, 329, 330, 331, 294, 278, 237, 79],
-  outerLips:   [61, 185, 40, 39, 37, 0, 267, 269, 270, 409, 291, 375, 321, 405, 314, 17, 84, 181, 91, 146],
-  innerLips:   [78, 191, 80, 81, 82, 13, 312, 311, 310, 415, 308, 324, 318, 402, 317, 14, 87, 178, 88, 95],
-  faceOval:    [10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136, 172, 58, 132, 93, 234, 127, 162, 21, 54, 103, 67, 109],
-  chin:        [152, 377, 148, 400, 176, 149, 150, 136, 172, 58, 132, 175, 396],
-  rightCheek:  [234, 93, 137, 177, 215, 138, 135, 169, 210, 214, 207, 205, 36, 142, 126, 116, 117, 118],
-  leftCheek:   [454, 323, 366, 401, 435, 367, 364, 394, 430, 434, 427, 425, 266, 371, 355, 345, 346, 347],
-  forehead:    [10, 109, 67, 103, 54, 21, 162, 127, 356, 389, 251, 284, 332, 297, 338, 69, 108, 151, 337, 299],
-};
-
-const FEATURES = [
-  { key: 'eyes',      label: 'Eyes & Irises',    emoji: '👁️', regionKeys: ['rightEye','leftEye','rightIris','leftIris'],   note: '42 pts — eye shape, lid curvature, iris size' },
-  { key: 'eyebrows',  label: 'Eyebrows',          emoji: '〰️', regionKeys: ['rightEyebrow','leftEyebrow'],                  note: '20 pts — arch height, thickness, shape' },
-  { key: 'nose',      label: 'Nose',              emoji: '👃', regionKeys: ['noseBridge','noseTip'],                        note: '28 pts — bridge height, tip width, nostril flare' },
-  { key: 'lips',      label: 'Lips & Mouth',      emoji: '👄', regionKeys: ['outerLips','innerLips'],                       note: '40 pts — cupid's bow, lip fullness, mouth width' },
-  { key: 'faceShape', label: 'Face Shape & Jaw',  emoji: '🔷', regionKeys: ['faceOval','chin'],                            note: '49 pts — jawline, chin shape, face width' },
-  { key: 'cheeks',    label: 'Cheeks & Temples',  emoji: '✨', regionKeys: ['rightCheek','leftCheek'],                     note: '36 pts — cheekbone height & prominence' },
-  { key: 'forehead',  label: 'Forehead',           emoji: '🧠', regionKeys: ['forehead'],                                   note: '20 pts — forehead height, brow ridge' },
+// CDN sources tried in order. The npm package bundles the weights, so it loads
+// faster and more reliably than the GitHub CDN.
+const MODEL_URLS = [
+  'https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/weights',
+  'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights',
 ];
 
-// ══════════════════════════════════════════════════════════════════════════════
-// STATE
-// ══════════════════════════════════════════════════════════════════════════════
+// ── 68-point landmark index groups ────────────────────────────────────────────
+// face-api.js uses dlib's 68-point model:
+// 0-16 jaw · 17-21 R-brow · 22-26 L-brow · 27-35 nose · 36-47 eyes · 48-67 mouth
+const FEATURES = [
+  {
+    key: 'eyes',
+    label: 'Eyes',
+    emoji: '👁️',
+    indices: [36,37,38,39,40,41, 42,43,44,45,46,47],
+    note: '12 landmark pts — eye shape & lid curvature',
+  },
+  {
+    key: 'eyebrows',
+    label: 'Eyebrows',
+    emoji: '〰️',
+    indices: [17,18,19,20,21, 22,23,24,25,26],
+    note: '10 landmark pts — arch height & shape',
+  },
+  {
+    key: 'nose',
+    label: 'Nose',
+    emoji: '👃',
+    indices: [27,28,29,30,31,32,33,34,35],
+    note: '9 landmark pts — bridge, tip & nostril width',
+  },
+  {
+    key: 'mouth',
+    label: 'Lips & Mouth',
+    emoji: '👄',
+    indices: [48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67],
+    note: '20 landmark pts — lip shape, cupid\'s bow & width',
+  },
+  {
+    key: 'jawline',
+    label: 'Face Shape',
+    emoji: '🔷',
+    indices: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16],
+    note: '17 landmark pts — jawline width & chin shape',
+  },
+];
+
+// ── State ─────────────────────────────────────────────────────────────────────
 const state = {
-  fm:          null,   // FaceMesh instance
   modelsReady: false,
   images:     { parent1: null, parent2: null, child: null },
-  landmarks:  { parent1: null, parent2: null, child: null },
 };
 
-const $          = id => document.getElementById(id);
+const $           = id => document.getElementById(id);
 const modelBanner = $('model-banner');
 const modelText   = $('model-status-text');
 const analyzeBtn  = $('analyze-btn');
@@ -60,61 +70,70 @@ const ctaHint     = $('cta-hint');
 const resultsEl   = $('results-section');
 
 // ══════════════════════════════════════════════════════════════════════════════
-// 1. INIT — create FaceMesh and pre-warm (downloads WASM + model in background)
+// 1. LOAD MODELS  (SSD face detector + 68-pt landmarks + 128-d descriptor)
 // ══════════════════════════════════════════════════════════════════════════════
-async function init() {
-  try {
-    modelText.textContent = 'Downloading MediaPipe FaceMesh model…';
-
-    state.fm = new FaceMesh({
-      locateFile: file => `${MP_CDN}/${file}`,
-    });
-
-    state.fm.setOptions({
-      maxNumFaces:            1,
-      refineLandmarks:        true,   // enables 478-point mesh + iris
-      minDetectionConfidence: 0.5,
-      minTrackingConfidence:  0.5,
-    });
-
-    // Pre-warm: send a blank canvas so WASM + model download now, not on first click
-    await sendImage(createBlankCanvas());
-
-    state.modelsReady = true;
-    modelBanner.classList.add('ready');
-    modelBanner.querySelector('.spinner').outerHTML = '<span style="font-size:1.1rem">✅</span>';
-    modelText.textContent = 'MediaPipe FaceMesh ready (478 landmarks per face)';
-    updateButtons();
-    setTimeout(() => modelBanner.classList.add('hidden'), 4000);
-
-  } catch (err) {
-    modelText.textContent = `❌ Failed to load: ${err.message}`;
-    console.error(err);
+async function loadModels() {
+  // Reset to spinner in case this is a retry
+  modelBanner.classList.remove('ready', 'hidden');
+  const spinnerEl = modelBanner.querySelector('span, .spinner');
+  if (spinnerEl && !spinnerEl.classList.contains('spinner')) {
+    spinnerEl.outerHTML = '<div class="spinner"></div>';
   }
+  state.modelsReady = false;
+  updateButtons();
+
+  const TIMEOUT_MS = 25_000; // 25 s per CDN source before trying next
+
+  for (let i = 0; i < MODEL_URLS.length; i++) {
+    const url = MODEL_URLS[i];
+    const label = i === 0 ? 'primary server' : `backup server ${i}`;
+    try {
+      // Load the three models one-by-one so the user sees real progress
+      modelText.textContent = `[1/3] Loading face detector (${label})…`;
+      await loadOneWithTimeout(faceapi.nets.ssdMobilenetv1, url, TIMEOUT_MS);
+
+      modelText.textContent = `[2/3] Loading landmark model (${label})…`;
+      await loadOneWithTimeout(faceapi.nets.faceLandmark68Net, url, TIMEOUT_MS);
+
+      modelText.textContent = `[3/3] Loading recognition model (${label})…`;
+      await loadOneWithTimeout(faceapi.nets.faceRecognitionNet, url, TIMEOUT_MS);
+
+      // ── Success ──
+      state.modelsReady = true;
+      modelBanner.classList.add('ready');
+      modelBanner.querySelector('.spinner').outerHTML = '<span style="font-size:1.1rem">✅</span>';
+      modelText.textContent = 'Models ready — upload your family photos below';
+      updateButtons();
+      setTimeout(() => modelBanner.classList.add('hidden'), 4000);
+      return; // done
+
+    } catch (err) {
+      console.warn(`CDN ${label} failed:`, err.message);
+      if (i < MODEL_URLS.length - 1) {
+        modelText.textContent = `Server ${i + 1} timed out — trying next…`;
+        await new Promise(r => setTimeout(r, 600)); // brief pause before retry
+      }
+    }
+  }
+
+  // ── All sources failed ──
+  modelBanner.querySelector('.spinner').outerHTML = '<span style="font-size:1.1rem">❌</span>';
+  modelText.innerHTML =
+    'Could not load models. Check your internet connection and '
+    + '<button id="retry-btn" style="'
+    + 'background:#7c3aed;color:#fff;border:none;border-radius:6px;'
+    + 'padding:3px 12px;cursor:pointer;font-weight:700;margin-left:6px'
+    + '" onclick="loadModels()">Retry</button>';
 }
 
-/** Wrap FaceMesh.send() in a Promise that resolves with the landmark array (or null). */
-function sendImage(imgOrCanvas) {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error('Detection timed out after 20 s')), 20_000);
-
-    state.fm.onResults(results => {
-      clearTimeout(timer);
-      // multiFaceLandmarks[0] is an array of 478 {x,y,z} objects in [0,1] coords
-      resolve(results.multiFaceLandmarks?.[0] ?? null);
-    });
-
-    state.fm.send({ image: imgOrCanvas }).catch(err => {
-      clearTimeout(timer);
-      reject(err);
-    });
-  });
-}
-
-function createBlankCanvas() {
-  const c = document.createElement('canvas');
-  c.width = c.height = 64;
-  return c;
+/** Wrap a single net.loadFromUri() with a timeout so hangs don't block forever. */
+function loadOneWithTimeout(net, url, ms) {
+  return Promise.race([
+    net.loadFromUri(url),
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error(`timed out after ${ms / 1000} s`)), ms)
+    ),
+  ]);
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -129,22 +148,21 @@ function createBlankCanvas() {
   drop.addEventListener('drop', e => {
     e.preventDefault(); drop.classList.remove('drag-over');
     const f = e.dataTransfer.files[0];
-    if (f?.type.startsWith('image/')) loadImage(slot, f);
+    if (f?.type.startsWith('image/')) loadImageFile(slot, f);
   });
-  input.addEventListener('change', () => { if (input.files[0]) loadImage(slot, input.files[0]); });
+  input.addEventListener('change', () => { if (input.files[0]) loadImageFile(slot, input.files[0]); });
 });
 
 document.querySelectorAll('.remove-btn').forEach(btn =>
   btn.addEventListener('click', () => clearSlot(btn.dataset.slot))
 );
 
-function loadImage(slot, file) {
+function loadImageFile(slot, file) {
   const reader = new FileReader();
   reader.onload = ev => {
     const img = new Image();
     img.onload = () => {
-      state.images[slot]    = img;
-      state.landmarks[slot] = null;
+      state.images[slot] = img;
       renderPreview(slot, img);
       updateButtons();
       resultsEl.style.display = 'none';
@@ -167,12 +185,11 @@ function renderPreview(slot, img) {
 }
 
 function clearSlot(slot) {
-  state.images[slot]    = null;
-  state.landmarks[slot] = null;
-  $(`wrap-${slot}`).style.display = 'none';
-  $(`drop-${slot}`).style.display = 'flex';
-  $(`input-${slot}`).value        = '';
-  $(`tag-${slot}`).textContent    = '';
+  state.images[slot] = null;
+  $(`wrap-${slot}`).style.display  = 'none';
+  $(`drop-${slot}`).style.display  = 'flex';
+  $(`input-${slot}`).value         = '';
+  $(`tag-${slot}`).textContent     = '';
   const old = $(`acc-badge-${slot}`);
   if (old) old.remove();
   updateButtons();
@@ -192,7 +209,7 @@ function updateButtons() {
   analyzeBtn.disabled = !(state.modelsReady && hasChild && hasParent);
   resetBtn.disabled   = !hasAny;
 
-  if (!state.modelsReady) ctaHint.textContent = 'Downloading model…';
+  if (!state.modelsReady) ctaHint.textContent = 'Downloading models…';
   else if (!hasChild)     ctaHint.textContent = "Upload the child's photo to continue";
   else if (!hasParent)    ctaHint.textContent = "Upload at least one parent's photo to continue";
   else                    ctaHint.textContent = 'Ready — click Analyze Family Resemblance';
@@ -210,46 +227,47 @@ async function runAnalysis() {
   setTimeout(() => resultsEl.scrollIntoView({ behavior: 'smooth', block: 'start' }), 120);
 
   try {
+    const detections = {};
     const slots = ['child', 'parent1', 'parent2'].filter(s => state.images[s]);
 
-    // ── Run detection on each uploaded image (sequential — MediaPipe is stateful)
     for (const slot of slots) {
-      const lms = await sendImage(state.images[slot]);
-      state.landmarks[slot] = lms;
-
-      if (lms) {
-        drawLandmarks(slot, lms);
-        const acc = computePhotoAccuracy(lms, state.images[slot]);
-        showAccuracyBadge(slot, acc.pct);
-        $(`tag-${slot}`).textContent = `✅ ${lms.length} landmarks`;
-      } else {
-        $(`tag-${slot}`).textContent = '⚠️ No face found';
-      }
+      const det = await faceapi
+        .detectSingleFace(state.images[slot], new faceapi.SsdMobilenetv1Options({ minConfidence: 0.3 }))
+        .withFaceLandmarks()
+        .withFaceDescriptor();
+      detections[slot] = det || null;
     }
 
-    // ── Validate required faces ──
-    if (!state.landmarks.child) {
+    if (!detections.child) {
       showError("No face detected in the child's photo. Try a clearer, front-facing photo.");
       analyzeBtn.disabled = false;
       return;
     }
 
-    const hasP1 = !!state.landmarks.parent1;
-    const hasP2 = !!state.landmarks.parent2;
+    const hasP1 = !!detections.parent1;
+    const hasP2 = !!detections.parent2;
 
     if (!hasP1 && !hasP2) {
-      showError("No faces detected in the parent photos. Try clearer, front-facing photos.");
+      showError("No faces detected in parent photos. Try clearer, front-facing photos.");
       analyzeBtn.disabled = false;
       return;
     }
 
-    // ── Compute scores & render ──
+    // Draw landmark overlays + accuracy badges
     const accuracies = {};
-    slots.forEach(s => {
-      if (state.landmarks[s]) accuracies[s] = computePhotoAccuracy(state.landmarks[s], state.images[s]);
-    });
+    for (const slot of slots) {
+      const det = detections[slot];
+      if (det) {
+        drawLandmarks(slot, det);
+        accuracies[slot] = computeAccuracy(det, state.images[slot]);
+        showAccuracyBadge(slot, accuracies[slot].pct);
+        $(`tag-${slot}`).textContent = `✅ 68 landmarks`;
+      } else {
+        $(`tag-${slot}`).textContent = '⚠️ No face found';
+      }
+    }
 
-    const scores = computeScores(hasP1, hasP2);
+    const scores = computeScores(detections, hasP1, hasP2);
     renderResults(scores, accuracies, hasP1, hasP2);
     analyzeBtn.disabled = false;
 
@@ -260,50 +278,52 @@ async function runAnalysis() {
   }
 }
 
-// ── Draw coloured landmark mesh on the photo canvas ──────────────────────────
-// MediaPipe landmarks are normalised [0,1] → multiply by canvas dimensions
-function drawLandmarks(slot, lms) {
+// ── Draw landmarks on canvas ──────────────────────────────────────────────────
+function drawLandmarks(slot, det) {
   const canvas = $(`canvas-${slot}`);
   const img    = state.images[slot];
   const ctx    = canvas.getContext('2d');
-  const W = canvas.width, H = canvas.height;
-
   ctx.drawImage(img, 0, 0);
 
-  const dotR = Math.max(1.2, W / 500);
+  const box  = det.detection.box;
+  const pts  = det.landmarks.positions;
+  const dotR = Math.max(1.5, img.naturalWidth / 380);
+  const lw   = Math.max(1.5, img.naturalWidth / 400);
+
   const slotColor = { parent1: '#2563eb', parent2: '#db2777', child: '#059669' };
+  const primary   = slotColor[slot] || '#7c3aed';
 
-  // Bounding box from face-oval landmarks
-  const ovalPts = REGIONS.faceOval.map(i => lms[i]).filter(Boolean);
-  const xs = ovalPts.map(p => p.x * W), ys = ovalPts.map(p => p.y * H);
-  const bx = Math.min(...xs), by = Math.min(...ys);
-  const bw = Math.max(...xs) - bx, bh = Math.max(...ys) - by;
-  ctx.strokeStyle = slotColor[slot] || '#7c3aed';
-  ctx.lineWidth   = Math.max(1.5, W / 400);
-  ctx.strokeRect(bx, by, bw, bh);
+  // Bounding box
+  ctx.strokeStyle = primary;
+  ctx.lineWidth   = lw * 1.6;
+  ctx.strokeRect(box.x, box.y, box.width, box.height);
 
-  // Colour-coded regions
-  const regionColors = {
-    rightEye: '#3b82f6', leftEye: '#3b82f6',
-    rightIris: '#1d4ed8', leftIris: '#1d4ed8',
-    rightEyebrow: '#8b5cf6', leftEyebrow: '#8b5cf6',
-    noseBridge: '#f59e0b', noseTip: '#f59e0b',
-    outerLips: '#ef4444', innerLips: '#f87171',
-    faceOval: '#10b981', chin: '#059669',
-    rightCheek: '#ec4899', leftCheek: '#ec4899',
-    forehead: '#14b8a6',
-  };
+  // Feature regions with distinct colours
+  const regionColors = [
+    { label: 'jaw',      color: '#10b981', idx: range(0,  17) },
+    { label: 'r-brow',   color: '#8b5cf6', idx: range(17, 22) },
+    { label: 'l-brow',   color: '#8b5cf6', idx: range(22, 27) },
+    { label: 'nose',     color: '#f59e0b', idx: range(27, 36) },
+    { label: 'r-eye',    color: '#3b82f6', idx: range(36, 42) },
+    { label: 'l-eye',    color: '#3b82f6', idx: range(42, 48) },
+    { label: 'mouth-out',color: '#ef4444', idx: range(48, 60) },
+    { label: 'mouth-in', color: '#f87171', idx: range(60, 68) },
+  ];
 
-  Object.entries(regionColors).forEach(([region, color]) => {
-    ctx.fillStyle = color + 'cc';
-    (REGIONS[region] ?? []).forEach(i => {
-      const p = lms[i];
+  regionColors.forEach(({ color, idx }) => {
+    ctx.fillStyle = color + 'dd';
+    idx.forEach(i => {
+      const p = pts[i];
       if (!p) return;
       ctx.beginPath();
-      ctx.arc(p.x * W, p.y * H, dotR, 0, Math.PI * 2);
+      ctx.arc(p.x, p.y, dotR, 0, Math.PI * 2);
       ctx.fill();
     });
   });
+}
+
+function range(start, end) {
+  return Array.from({ length: end - start }, (_, i) => start + i);
 }
 
 function showAccuracyBadge(slot, pct) {
@@ -318,49 +338,46 @@ function showAccuracyBadge(slot, pct) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// 4. ACCURACY — based on face size, frontality and landmark count
+// 4. ACCURACY — face size, detection confidence, frontality
 // ══════════════════════════════════════════════════════════════════════════════
-// MediaPipe landmark coords are normalised [0,1]; aspect ratio differences
-// between x and y are minor for portrait photos and don't affect relative scores.
-function computePhotoAccuracy(lms, img) {
-  // ── Face size (bounding box of face oval in normalised coords) ──
-  const ovalPts = REGIONS.faceOval.map(i => lms[i]).filter(Boolean);
-  const xs = ovalPts.map(p => p.x), ys = ovalPts.map(p => p.y);
-  const faceW = Math.max(...xs) - Math.min(...xs);
-  const faceH = Math.max(...ys) - Math.min(...ys);
-  const faceArea  = faceW * faceH;              // fraction of image area
-  const sizeScore = Math.min(1, faceArea / 0.09); // 9 % fills image = full score
+function computeAccuracy(det, img) {
+  const box  = det.detection.box;
+  const pts  = det.landmarks.positions;
+  const conf = det.detection.score;                            // 0–1 SSD confidence
 
-  // ── Eye tilt (roll) ──
-  const rEyeC = meanPoint(REGIONS.rightEye.map(i => lms[i]).filter(Boolean));
-  const lEyeC = meanPoint(REGIONS.leftEye.map(i => lms[i]).filter(Boolean));
+  // Face size vs image area
+  const imgArea   = img.naturalWidth * img.naturalHeight;
+  const faceArea  = box.width * box.height;
+  const sizeScore = Math.min(1, faceArea / imgArea / 0.09);   // 9 % = full score
+
+  // Eye-roll (head tilt)
+  const rEyeC = centroid(pts.slice(36, 42));
+  const lEyeC = centroid(pts.slice(42, 48));
   const tiltDeg = Math.abs(Math.atan2(lEyeC.y - rEyeC.y, lEyeC.x - rEyeC.x) * 180 / Math.PI);
   const rollScore = Math.max(0, 1 - tiltDeg / 25);
 
-  // ── Nose-centering between eyes (yaw) ──
-  const noseTip  = lms[4];
+  // Nose yaw (centering between eyes)
+  const noseTip  = pts[30];
   const eyeMidX  = (rEyeC.x + lEyeC.x) / 2;
-  const yawNorm  = Math.abs((noseTip?.x ?? eyeMidX) - eyeMidX) / Math.max(0.01, faceW);
-  const yawScore = Math.max(0, 1 - yawNorm / 0.18);
+  const yawNorm  = Math.abs(noseTip.x - eyeMidX) / Math.max(1, box.width);
+  const yawScore = Math.max(0, 1 - yawNorm / 0.15);
 
-  // ── Landmark coverage ──
-  const landmarkScore = Math.min(1, lms.length / 468);
-
-  const total = sizeScore * 0.35 + rollScore * 0.25 + yawScore * 0.25 + landmarkScore * 0.15;
+  const total = conf * 0.20 + sizeScore * 0.30 + rollScore * 0.25 + yawScore * 0.25;
   const pct   = Math.round(Math.min(100, total * 100));
 
   const tips = [];
   if (sizeScore  < 0.5) tips.push('face too small — move closer or crop tighter');
-  if (rollScore  < 0.6) tips.push('head is tilted — keep it level');
-  if (yawScore   < 0.6) tips.push('face turned to the side — look straight at camera');
+  if (rollScore  < 0.6) tips.push('head tilted — keep it level');
+  if (yawScore   < 0.6) tips.push('face turned sideways — look straight at the camera');
+  if (conf       < 0.6) tips.push('photo may be blurry or poorly lit');
 
   return {
     pct,
     factors: {
-      size:      Math.round(sizeScore * 100),
-      roll:      Math.round(rollScore * 100),
-      yaw:       Math.round(yawScore  * 100),
-      landmarks: Math.round(landmarkScore * 100),
+      confidence: Math.round(conf * 100),
+      size:       Math.round(sizeScore  * 100),
+      roll:       Math.round(rollScore  * 100),
+      yaw:        Math.round(yawScore   * 100),
     },
     tips,
   };
@@ -368,62 +385,92 @@ function computePhotoAccuracy(lms, img) {
 
 // ══════════════════════════════════════════════════════════════════════════════
 // 5. SIMILARITY SCORING
-// Normalise landmarks by inter-ocular distance (IOD) so comparisons are
-// scale- and translation-invariant.
 // ══════════════════════════════════════════════════════════════════════════════
-function normaliseLandmarks(lms) {
-  const rEyeC = meanPoint(REGIONS.rightEye.map(i => lms[i]).filter(Boolean));
-  const lEyeC = meanPoint(REGIONS.leftEye.map(i => lms[i]).filter(Boolean));
+
+/**
+ * Overall similarity = weighted average of the feature-level scores.
+ * Weights reflect each feature's prominence in perceived resemblance.
+ * Using the same numbers as the bars guarantees the gauges and the
+ * inheritance summary always tell the same story.
+ */
+const FEATURE_WEIGHTS = {
+  eyes:     0.25,   // most distinctive feature
+  nose:     0.25,   // strong genetic marker
+  mouth:    0.20,
+  jawline:  0.15,
+  eyebrows: 0.15,
+};
+
+function overallFromFeatures(featureArr, parent) {
+  let total = 0, wSum = 0;
+  featureArr.forEach(f => {
+    const score = f.scores[parent];
+    if (score == null) return;
+    const w = FEATURE_WEIGHTS[f.key] ?? 0.20;
+    total += score * w;
+    wSum  += w;
+  });
+  return wSum > 0 ? Math.round(total / wSum) : 0;
+}
+
+/**
+ * IOD-normalised landmark comparison for a feature point set.
+ * Returns 0–100 %.
+ */
+function featureSim(childNorm, parentNorm, indices) {
+  let total = 0;
+  for (const i of indices) {
+    total += dist2d(childNorm[i], parentNorm[i]);
+  }
+  const avgDist = total / indices.length;
+  // After IOD-normalisation, avg dist for close family ≈ 0.05–0.18
+  // Map [0, 0.30] → [100, 0] with exponential for smoother spread
+  return Math.max(0, Math.min(100, Math.round(100 * Math.exp(-avgDist / 0.12))));
+}
+
+/**
+ * Normalise positions to be translation- + scale-invariant.
+ * Origin = mid-eye point; scale = inter-ocular distance (IOD).
+ */
+function normaliseLandmarks(positions) {
+  const rEyeC = centroid(positions.slice(36, 42));
+  const lEyeC = centroid(positions.slice(42, 48));
   const iod   = dist2d(rEyeC, lEyeC);
-  if (iod < 0.005) return lms;                          // degenerate — too small
+  if (iod < 1) return positions;
   const cx = (rEyeC.x + lEyeC.x) / 2;
   const cy = (rEyeC.y + lEyeC.y) / 2;
-  return lms.map(p => p ? { x: (p.x - cx) / iod, y: (p.y - cy) / iod } : null);
+  return positions.map(p => ({ x: (p.x - cx) / iod, y: (p.y - cy) / iod }));
 }
 
-/** Overall similarity using all 468 face-mesh landmarks → 0-100 % */
-function overallSim(n1, n2) {
-  let total = 0, count = 0;
-  const len = Math.min(468, n1.length, n2.length);
-  for (let i = 0; i < len; i++) {
-    if (!n1[i] || !n2[i]) continue;
-    total += dist2d(n1[i], n2[i]);
-    count++;
-  }
-  if (!count) return 0;
-  // After IOD-normalisation, avg dist range: 0 (identical) → ~0.14 (unrelated)
-  return Math.max(0, Math.min(100, Math.round((1 - total / count / 0.14) * 100)));
-}
+function computeScores(detections, hasP1, hasP2) {
+  const childNorm = normaliseLandmarks(detections.child.landmarks.positions);
 
-/** Feature-level similarity for a list of region keys → 0-100 % */
-function featureSim(n1, n2, regionKeys) {
-  const indices = regionKeys.flatMap(k => REGIONS[k] ?? []);
-  let total = 0, count = 0;
-  for (const i of indices) {
-    if (!n1[i] || !n2[i]) continue;
-    total += dist2d(n1[i], n2[i]);
-    count++;
-  }
-  if (!count) return 50;
-  return Math.max(0, Math.min(100, Math.round((1 - total / count / 0.20) * 100)));
-}
+  const result = {
+    overall:  {},
+    features: FEATURES.map(f => ({ ...f, scores: {} })),
+  };
 
-function computeScores(hasP1, hasP2) {
-  const childN = normaliseLandmarks(state.landmarks.child);
-  const result = { overall: {}, features: FEATURES.map(f => ({ ...f, scores: {} })) };
-
+  // Pass 1: compute per-feature scores for every parent
   ['parent1', 'parent2'].forEach(p => {
-    if (!state.landmarks[p]) return;
-    const parN = normaliseLandmarks(state.landmarks[p]);
-    result.overall[p] = overallSim(childN, parN);
-    result.features.forEach(f => { f.scores[p] = featureSim(childN, parN, f.regionKeys); });
+    if (!detections[p]) return;
+    const parNorm = normaliseLandmarks(detections[p].landmarks.positions);
+    result.features.forEach(f => {
+      f.scores[p] = featureSim(childNorm, parNorm, f.indices);
+    });
   });
+
+  // Pass 2: overall = weighted average of the SAME feature scores
+  // → gauges and inheritance summary now always agree
+  ['parent1', 'parent2'].forEach(p => {
+    if (!detections[p]) return;
+    result.overall[p] = overallFromFeatures(result.features, p);
+  });
+
   return result;
 }
 
-// ── Maths helpers ─────────────────────────────────────────────────────────────
-function meanPoint(pts) {
-  if (!pts.length) return { x: 0, y: 0 };
+// ── Math helpers ─────────────────────────────────────────────────────────────
+function centroid(pts) {
   const s = pts.reduce((a, p) => ({ x: a.x + p.x, y: a.y + p.y }), { x: 0, y: 0 });
   return { x: s.x / pts.length, y: s.y / pts.length };
 }
@@ -436,7 +483,7 @@ function renderResults(scores, accuracies, hasP1, hasP2) {
   resultsEl.innerHTML = `
     <div class="results-header">
       <h2>Family Resemblance Report</h2>
-      <p>Based on <strong>478 MediaPipe facial landmark points</strong> per photo</p>
+      <p>Overall scores are a <strong>weighted average of the 5 feature scores</strong> below — every number on this page comes from the same landmark geometry</p>
     </div>
     ${buildConfidenceCard(accuracies, hasP1, hasP2)}
     ${buildScoreCards(scores.overall, hasP1, hasP2)}
@@ -451,7 +498,7 @@ function renderResults(scores, accuracies, hasP1, hasP2) {
   }));
 }
 
-// ── Confidence card ───────────────────────────────────────────────────────────
+// ── Confidence / Accuracy card ────────────────────────────────────────────────
 function buildConfidenceCard(accuracies, hasP1, hasP2) {
   const slots = [
     { key: 'child',   label: '👶 Child' },
@@ -459,7 +506,7 @@ function buildConfidenceCard(accuracies, hasP1, hasP2) {
     { key: 'parent2', label: '👤 Parent 2', skip: !hasP2 },
   ].filter(s => !s.skip && accuracies[s.key]);
 
-  const minScore = Math.min(...slots.map(s => accuracies[s.key].pct));
+  const minScore  = Math.min(...slots.map(s => accuracies[s.key].pct));
   const overallMsg = minScore >= 75 ? '🎯 Results are highly reliable'
                    : minScore >= 50 ? '📋 Results are a reasonable estimate'
                    : '⚠️ Results may be less accurate — see improvement tips below';
@@ -469,7 +516,7 @@ function buildConfidenceCard(accuracies, hasP1, hasP2) {
     const level = pct >= 75 ? 'high' : pct >= 50 ? 'medium' : 'low';
     const badge = pct >= 75 ? '✅ High quality' : pct >= 50 ? '⚠️ Fair quality' : '❌ Low quality';
     const tip   = tips.length ? `💡 ${tips.join(' · ')}` : '✓ Great photo for analysis';
-    const factorLine = `Face size: ${factors.size}% · Frontality: ${Math.round((factors.roll + factors.yaw) / 2)}% · Landmarks: ${factors.landmarks}%`;
+    const factorLine = `Detection: ${factors.confidence}% · Size: ${factors.size}% · Frontality: ${Math.round((factors.roll + factors.yaw) / 2)}%`;
     return `
       <div class="conf-row">
         <div class="conf-who">${label}</div>
@@ -492,7 +539,7 @@ function buildConfidenceCard(accuracies, hasP1, hasP2) {
     </div>`;
 }
 
-// ── Overall gauge cards ───────────────────────────────────────────────────────
+// ── Overall score gauges ──────────────────────────────────────────────────────
 function buildScoreCards(overall, hasP1, hasP2) {
   let h = '<div class="score-cards">';
   if (hasP1) h += gaugeHTML('p1', 'Child vs Parent 1', overall.parent1 ?? 0, 'p1');
@@ -505,7 +552,7 @@ function buildScoreCards(overall, hasP1, hasP2) {
 }
 
 function gaugeHTML(id, label, pct, arc) {
-  const tag = pct >= 70 ? '🔥 Strong resemblance' : pct >= 45 ? '😊 Good resemblance' : '🌱 Some resemblance';
+  const tag = pct >= 65 ? '🔥 Strong resemblance' : pct >= 45 ? '😊 Good resemblance' : '🌱 Some resemblance';
   return `
     <div class="score-card ${id}-card">
       <div class="score-label">${label}</div>
@@ -585,11 +632,13 @@ function buildInheritanceSummary(features, hasP1, hasP2) {
   const p1w = [], p2w = [], ties = [];
   features.forEach(f => {
     const d = Math.abs((f.scores.parent1 ?? 0) - (f.scores.parent2 ?? 0));
-    if (d < 6)                            ties.push(f);
-    else if (f.scores.parent1 > f.scores.parent2) p1w.push(f);
-    else                                  p2w.push(f);
+    if (d < 6) ties.push(f);
+    else if ((f.scores.parent1 ?? 0) > (f.scores.parent2 ?? 0)) p1w.push(f);
+    else p2w.push(f);
   });
-  const dom = p1w.length > p2w.length ? 'Parent 1' : p2w.length > p1w.length ? 'Parent 2' : 'both parents equally';
+  const dom = p1w.length > p2w.length ? 'Parent 1'
+            : p2w.length > p1w.length ? 'Parent 2'
+            : 'both parents equally';
   const pills = [
     ...p1w.map(f  => `<span class="pill p1">${f.emoji} ${f.label} → Parent 1</span>`),
     ...p2w.map(f  => `<span class="pill p2">${f.emoji} ${f.label} → Parent 2</span>`),
@@ -615,10 +664,9 @@ function analyzingHTML() {
     <div class="analyzing-overlay">
       <div class="spinner" style="color:#7c3aed"></div>
       <h3>Analyzing faces…</h3>
-      <p>Running MediaPipe FaceMesh on all photos</p>
+      <p>Detecting landmarks and computing face descriptors</p>
     </div>`;
 }
-
 function showError(msg) {
   resultsEl.innerHTML = `<div class="error-box">❌ ${msg}</div>`;
 }
@@ -626,4 +674,4 @@ function showError(msg) {
 // ══════════════════════════════════════════════════════════════════════════════
 // START
 // ══════════════════════════════════════════════════════════════════════════════
-init();
+loadModels();
