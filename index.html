@@ -2,121 +2,81 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>FamilyFace — Kids & Parents Similarity</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="theme-color" content="#0a0a1a" />
+  <meta name="description" content="Compare facial features with family members or celebrities using AI-powered face analysis" />
+  <link rel="manifest" href="manifest.json" />
+  <title>Resemble — AI Face Comparison</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="style.css" />
-  <!-- face-api.js — proven CDN, loads in ~5 s, no WASM required -->
   <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
 </head>
 <body>
 
-  <!-- ── HEADER ── -->
-  <header>
-    <div class="brand">
-      <span class="brand-icon">&#129328;</span>
-      <div>
-        <h1>FamilyFace</h1>
-        <p>Discover which features your child inherited</p>
-      </div>
+  <!-- ── NAV BAR ── -->
+  <nav class="navbar" id="navbar">
+    <a href="#" class="nav-brand" data-nav="landing">
+      <div class="nav-logo">R</div>
+      <span class="nav-name">Resemble</span>
+    </a>
+    <div class="nav-links" id="nav-links">
+      <a href="#family" class="nav-link" data-nav="family">Family</a>
+      <a href="#celebrity" class="nav-link" data-nav="celebrity">Celebrity</a>
     </div>
-  </header>
+  </nav>
 
   <!-- ── MODEL LOADING BANNER ── -->
   <div id="model-banner" class="model-banner">
     <div class="spinner"></div>
-    <span id="model-status-text">Loading face detection models&hellip;</span>
+    <span id="model-status-text">Loading AI face models&hellip;</span>
   </div>
 
-  <main>
-    <!-- ── UPLOAD SECTION ── -->
-    <section class="upload-section" id="upload-section">
-      <div class="section-header">
-        <h2>Upload Family Photos</h2>
-        <p>Add a child photo and at least one parent. MediaPipe FaceMesh analyses <strong>478 facial landmarks</strong> entirely in your browser — no data is ever uploaded.</p>
+  <!-- ── APP CONTAINER ── -->
+  <div id="app" class="app-container"></div>
+
+  <!-- ── CAMERA MODAL ── -->
+  <div class="camera-modal" id="camera-modal" style="display:none">
+    <div class="camera-content">
+      <button class="camera-close" id="camera-close">&times;</button>
+      <div class="camera-viewport">
+        <video id="camera-video" autoplay playsinline muted></video>
+        <canvas id="camera-overlay" class="camera-overlay-canvas"></canvas>
+        <div class="face-guide">
+          <svg viewBox="0 0 300 400" class="face-oval-svg">
+            <defs>
+              <mask id="oval-mask">
+                <rect width="300" height="400" fill="white"/>
+                <ellipse cx="150" cy="185" rx="105" ry="140" fill="black"/>
+              </mask>
+            </defs>
+            <rect width="300" height="400" fill="rgba(0,0,0,0.6)" mask="url(#oval-mask)"/>
+            <ellipse cx="150" cy="185" rx="105" ry="140" fill="none" stroke="url(#scan-gradient)" stroke-width="3" class="scan-ring"/>
+            <defs>
+              <linearGradient id="scan-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#7c3aed"/>
+                <stop offset="50%" stop-color="#a855f7"/>
+                <stop offset="100%" stop-color="#6366f1"/>
+              </linearGradient>
+            </defs>
+          </svg>
+        </div>
+        <div class="scan-line" id="scan-line"></div>
       </div>
-
-      <div class="upload-grid">
-
-        <!-- Parent 1 -->
-        <div class="upload-card" id="card-parent1" data-slot="parent1">
-          <div class="card-label parent1-label">
-            <span class="dot dot-p1"></span> Parent 1
+      <div class="camera-status" id="camera-status">Position your face within the oval</div>
+      <div class="camera-quality" id="camera-quality"></div>
+      <div class="camera-actions">
+        <button class="camera-capture-btn" id="camera-capture-btn" disabled>
+          <div class="capture-ring">
+            <div class="capture-dot"></div>
           </div>
-          <div class="drop-zone" id="drop-parent1">
-            <div class="drop-icon">&#128100;</div>
-            <p class="drop-text">Drop or click to upload</p>
-            <p class="drop-hint">JPG / PNG / WEBP</p>
-            <input type="file" accept="image/*" id="input-parent1" class="file-input" />
-          </div>
-          <div class="photo-wrap" id="wrap-parent1" style="display:none">
-            <canvas id="canvas-parent1" class="photo-canvas"></canvas>
-            <div class="face-tag" id="tag-parent1"></div>
-            <button class="remove-btn" data-slot="parent1" title="Remove photo">&times;</button>
-          </div>
-        </div>
-
-        <!-- Child (centre, highlighted) -->
-        <div class="upload-card child-card" id="card-child" data-slot="child">
-          <div class="card-label child-label">
-            <span class="dot dot-child"></span> Child
-          </div>
-          <div class="drop-zone" id="drop-child">
-            <div class="drop-icon">&#128118;</div>
-            <p class="drop-text">Drop or click to upload</p>
-            <p class="drop-hint">JPG / PNG / WEBP</p>
-            <input type="file" accept="image/*" id="input-child" class="file-input" />
-          </div>
-          <div class="photo-wrap" id="wrap-child" style="display:none">
-            <canvas id="canvas-child" class="photo-canvas"></canvas>
-            <div class="face-tag" id="tag-child"></div>
-            <button class="remove-btn" data-slot="child" title="Remove photo">&times;</button>
-          </div>
-        </div>
-
-        <!-- Parent 2 -->
-        <div class="upload-card" id="card-parent2" data-slot="parent2">
-          <div class="card-label parent2-label">
-            <span class="dot dot-p2"></span> Parent 2
-            <span class="optional-badge">optional</span>
-          </div>
-          <div class="drop-zone" id="drop-parent2">
-            <div class="drop-icon">&#128100;</div>
-            <p class="drop-text">Drop or click to upload</p>
-            <p class="drop-hint">JPG / PNG / WEBP</p>
-            <input type="file" accept="image/*" id="input-parent2" class="file-input" />
-          </div>
-          <div class="photo-wrap" id="wrap-parent2" style="display:none">
-            <canvas id="canvas-parent2" class="photo-canvas"></canvas>
-            <div class="face-tag" id="tag-parent2"></div>
-            <button class="remove-btn" data-slot="parent2" title="Remove photo">&times;</button>
-          </div>
-        </div>
-
-      </div><!-- /upload-grid -->
-
-      <div class="cta-row">
-        <div class="btn-group">
-          <button class="reset-btn" id="reset-btn" disabled title="Clear all uploaded photos">
-            &#8635; Reset All
-          </button>
-          <button class="analyze-btn" id="analyze-btn" disabled>
-            <span class="btn-icon">&#128269;</span>
-            Analyze Family Resemblance
-          </button>
-        </div>
-        <p class="cta-hint" id="cta-hint">Upload the child&rsquo;s photo to continue</p>
+        </button>
       </div>
-    </section>
-
-    <!-- ── RESULTS SECTION (populated by JS) ── -->
-    <section class="results-section" id="results-section" style="display:none">
-      <!-- dynamic content injected by app.js -->
-    </section>
-  </main>
-
-  <footer>
-    <p>Powered by <a href="https://github.com/justadudewhohacks/face-api.js" target="_blank" rel="noopener">face-api.js</a> &bull; All processing happens locally in your browser &bull; No data ever leaves your device</p>
-  </footer>
+    </div>
+  </div>
 
   <script src="app.js"></script>
 </body>
